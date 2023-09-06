@@ -4,13 +4,14 @@ from pydub import AudioSegment
 from tkinter import Tk, StringVar, messagebox
 from tkinter.filedialog import askdirectory
 from tkinter import ttk
+from mutagen.id3 import ID3, ID3NoHeaderError
 
 
 class AudioNormalizer:
     def __init__(self):
         self.root = Tk()
         self.root.title("Audio Normalizer")
-        self.root.geometry("500x250")
+        self.root.geometry("400x200")
 
         self.style = ttk.Style()
         self.style.configure("TLabel", font=("Arial", 12), padding=10)
@@ -26,9 +27,7 @@ class AudioNormalizer:
         self.label.pack()
 
         self.file_label_text = StringVar()
-        self.file_label = ttk.Label(
-            self.root, textvariable=self.file_label_text
-        )
+        self.file_label = ttk.Label(self.root, textvariable=self.file_label_text)
         self.file_label.pack()
 
         self.cancelling_label = ttk.Label(self.root, text="Cancelling...")
@@ -43,24 +42,23 @@ class AudioNormalizer:
         )
         self.stop_requested = False
 
-        self.close_button = ttk.Button(
-            self.root, text="Close", command=self.root.quit
-        )
+        self.close_button = ttk.Button(self.root, text="Close", command=self.root.quit)
+
+        self.image_label = ttk.Label(self.root)
+        self.image_label.pack()
+
+        self.image_path = None
 
         self.thread = None
 
     def normalize_files(self, folder_path):
         output_folder = os.path.join(folder_path, "normalized")
         os.makedirs(output_folder, exist_ok=True)
-        files = [
-            file for file in os.listdir(folder_path) if file.endswith(".mp3")
-        ]
+        files = [file for file in os.listdir(folder_path) if file.endswith(".mp3")]
         total_files = len(files)
 
         if total_files == 0:
-            self.label_text.set(
-                "No audio files found in the selected directory."
-            )
+            self.label_text.set("No audio files found in the selected directory.")
             self.select_button.pack()
             return
 
@@ -76,8 +74,35 @@ class AudioNormalizer:
 
             audio = AudioSegment.from_file(os.path.join(folder_path, file))
             normalized_audio = self.match_target_amplitude(audio, -20.0)
+
+            cover_output_path = None
+
+            try:
+                # Extract the cover image
+                mp3 = ID3(os.path.join(folder_path, file))
+                for tag in mp3.getall("APIC"):
+                    cover_data = tag.data
+                    cover_output_path = os.path.join(output_folder, "cover.jpg")
+                    with open(cover_output_path, "wb") as f:
+                        f.write(cover_data)
+            except ID3NoHeaderError:
+                print(f"No ID3 tag found for {file}")
+
             output_file = os.path.join(output_folder, file)
-            normalized_audio.export(output_file, format="mp3")
+
+            if cover_output_path:
+                normalized_audio.export(
+                    output_file,
+                    format="mp3",
+                    bitrate="320k",
+                    cover=cover_output_path,
+                )
+            else:
+                normalized_audio.export(
+                    output_file,
+                    format="mp3",
+                    bitrate="320k",
+                )
 
             print(f"Normalized {i + 1}/{total_files} - {file}")
 
